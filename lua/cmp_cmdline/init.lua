@@ -1,4 +1,6 @@
 local cmp = require('cmp')
+local log = require('cmp_cmdline.dlog').logger("cmd_cmdline::fuzzy")
+local fuzzy_definition = require('cmp_cmdline.fuzzy_path')
 
 ---@param patterns string[]
 ---@param head boolean
@@ -76,6 +78,7 @@ end
 
 ---@type cmp.Cmdline.Definition[]
 local definitions = {
+  fuzzy_definition,
   {
     ctype = 'cmdline',
     regex = [=[[^[:blank:]]*$]=],
@@ -87,7 +90,7 @@ local definitions = {
       if not force and ONLY_RANGE_REGEX:match_str(cmdline) then
         return {}
       end
-
+  
       local _, parsed = pcall(function()
         local target = cmdline
         local s, e = COUNT_RANGE_REGEX:match_str(target)
@@ -98,12 +101,12 @@ local definitions = {
         return vim.api.nvim_parse_cmd(target, {}) or {}
       end)
       parsed = parsed or {}
-
+  
       -- Check ignore cmd.
       if vim.tbl_contains(option.ignore_cmds, parsed.cmd) then
         return {}
       end
-
+  
       -- Cleanup modifiers.
       -- We can just remove modifiers because modifiers is always separated by space.
       if arglead ~= cmdline then
@@ -115,7 +118,7 @@ local definitions = {
           cmdline = string.sub(cmdline, e + 1)
         end
       end
-
+  
       -- Support `lua vim.treesitter._get|` or `'<,'>del|` completion.
       -- In this case, the `vim.fn.getcompletion` will return only `get_query` for `vim.treesitter.get_|`.
       -- We should detect `vim.treesitter.` and `get_query` separately.
@@ -125,11 +128,11 @@ local definitions = {
         local suffix_pos = vim.regex([[\h\w*$]]):match_str(arglead)
         fixed_input = string.sub(arglead, 1, suffix_pos or #arglead)
       end
-
+  
       -- The `vim.fn.getcompletion` does not return `*no*cursorline` option.
       -- cmp-cmdline corrects `no` prefix for option name.
       local is_option_name_completion = OPTION_NAME_COMPLETION_REGEX:match_str(cmdline) ~= nil
-
+  
       --- create items.
       local items = {}
       local escaped = cmdline:gsub([[\\]], [[\\\\]]);
@@ -144,14 +147,14 @@ local definitions = {
           }))
         end
       end
-
+  
       -- fix label with `fixed_input`
       for _, item in ipairs(items) do
         if not string.find(item.label, fixed_input, 1, true) then
           item.label = fixed_input .. item.label
         end
       end
-
+  
       -- fix trailing slash for path like item
       if option.treat_trailing_slash then
         for _, item in ipairs(items) do
@@ -196,6 +199,7 @@ source.complete = function(self, params, callback)
   local isIncomplete = false
   for _, def in ipairs(definitions) do
     local s, e = vim.regex(def.regex):match_str(params.context.cursor_before_line)
+    log("Compliting string [%s] for [%s, %s]", params.context.cursor_before_line, s, e)
     if s and e then
       offset = s
       ctype = def.ctype
@@ -215,7 +219,9 @@ source.complete = function(self, params, callback)
 
   local labels = {}
   for _, item in ipairs(items) do
-    item.kind = kind
+    if not item.kind then
+      item.kind = kind
+    end
     labels[item.label] = true
   end
 
